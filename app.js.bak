@@ -1,0 +1,218 @@
+let express = require('express');
+let app = express();
+let path = require("path");
+let bodyParser = require('body-parser');
+let multer = require('multer');
+let Title = require('./model').Title;
+let urlencodedParser = bodyParser.urlencoded({
+  extended: true
+});
+
+let baseUrl = 'http://192.168.205.123:3000';
+
+app.use(express.static('public')); //静态文件托管
+app.use(express.static('upload')); //静态文件托管
+app.use(express.static('node_modules')); //静态文件托管
+app.use(bodyParser.json()); //一定要设置
+
+app.use(function(err, req, res, next) { //捕捉错误页面
+
+})
+
+app.all('*', function(req, res, next) {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type,Content-Length, Authorization, Accept,X-Requested-With");
+  res.header("Access-Control-Allow-Methods", "PUT,POST,GET,DELETE,OPTIONS");
+
+  if (req.method == "OPTIONS") res.send(200); /*让options请求快速返回*/
+  else next();
+});
+//find all titles
+app.post('/allTitles', function(req, res) {
+  let {
+    page,
+    limit
+  } = req.body;
+  let query = Title.find()
+  query.skip((page - 1) * limit)
+    .limit(limit)
+    .exec(function(err, data) {
+      res.send(data)
+    })
+});
+
+//find  a title  by id
+app.get('/oneTitle', function(req, res) {
+  let id = req.query.id;
+  Title.findById(id, function(err, data) {
+    res.send(data)
+  })
+});
+
+//find a title and add clickNum
+app.get('/addClick', function(req, res) {
+  let id = req.query.id;
+
+  Title.findById(id, function(err, data) {
+    data.titleClickTimes++;
+    Title.update({
+      _id: id
+    }, data, function(err, data) {
+      if (err) {
+        res.end(JSON.stringify({
+          result: false
+        }))
+      } else {
+        res.end(JSON.stringify({
+          result: true
+        }))
+      }
+    })
+  })
+});
+
+/*//find titles by some attr,and sort
+app.get('/sort',function (req,res) {
+    let {condition,type} = req.query;
+    Title.find({type:type}).sort({condition}).exec((err,data)=>{
+        res.send(data)
+    })
+});*/
+
+
+app.get('/search', function(req, res) {
+  let {
+    type,
+    title
+  } = req.query;
+  let reg = new RegExp(title, 'i');
+  Title.find({
+    title: reg,
+    type: type
+  }, function(err, data) {
+    if (err) console.log('search查询查询出错： ' + err);
+    res.send(data)
+  })
+});
+
+
+//find  title by type
+app.post('/typeTitles', function(req, res) {
+  let {
+    page,
+    limit,
+    type,
+    condition
+  } = req.body;
+  let query = Title.find({
+    type: {
+      $in: type
+    }
+  });
+  let queryTemp;
+  switch (condition) {
+    case 'important':
+      queryTemp = query.sort({
+        important: -1
+      })
+      break;
+    case 'hard':
+      queryTemp = query.sort({
+        hard: -1
+      })
+      break;
+    case 'titleClickTimes':  
+      queryTemp = query.sort({
+        titleClickTimes: -1
+      })
+      break;
+    default:
+     queryTemp = query
+  }
+  queryTemp.skip((page - 1) * limit)
+    .limit(limit)
+    .exec(function(err, data) {
+      res.send(data)
+    })
+});
+
+//update  title
+app.put('/updateTitle', function(req, res) {
+  let id = req.body._id;
+  let updateData = req.body;
+  Title.update({
+    _id: id
+  }, updateData, function(err, data) {
+    if (err) {
+      res.end(JSON.stringify({
+        result: false
+      }))
+    } else {
+      res.end(JSON.stringify({
+        result: true
+      }))
+    }
+  })
+
+});
+
+//delete  title
+app.post('/deleteTitles', function(req, res) {
+  let deleteId = req.body.id;
+  Title.remove({
+    _id: {
+      $in: deleteId
+    }
+  }, function(err) {
+    if (err) res.send(JSON.stringify({
+      result: false
+    }));
+    else res.send(JSON.stringify({
+      result: true
+    }))
+  })
+});
+
+/////////////////////上传图片/////////////////////////////////////////
+let storage = multer.diskStorage({
+  destination: function(req, file, cb) {
+    cb(null, path.join(__dirname, '/upload'))
+  },
+  filename: function(req, file, cb) {
+    let fileName = Date.parse(new Date()) + Math.round(Math.random() * 10000) + '';
+    cb(null, fileName + '.png')
+  }
+});
+let upload = multer({
+  storage: storage
+}).single('avator');
+
+app.post('/upload', upload, function(req, res) {
+  let picUrl = baseUrl + '/' + req.file.filename;
+  let resObj = {
+    errno: 0,
+    data: [picUrl]
+  };
+  res.end(JSON.stringify(resObj))
+});
+////////////////////////////////////////////////////////////////
+
+
+//add title
+app.post('/addTitle', urlencodedParser, function(req, res) {
+  let oneTitle = req.body;
+  Title.create(oneTitle, function(err) {
+    res.end(err)
+  })
+});
+
+
+app.use(function(req, res, next) { //捕捉404页面
+  res.status(404).send('Sorry can not find that')
+})
+let server = app.listen(3000, function() {
+  let host = server.address().address;
+  let port = server.address().port;
+
+  console.log('Example app listening at http://%s:%s', host, port);
+});

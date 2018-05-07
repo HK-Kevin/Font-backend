@@ -1,0 +1,1 @@
+exports.subject = require('./subject');
